@@ -47,7 +47,7 @@ from flask import Flask, request
            print(f"❌ Telegram MarkdownV2 error: {e}, Response: {response.text if 'response' in locals() else 'No response'}")
            # Fallback to plain text
            payload["parse_mode"] = None
-           payload["text"] = msg
+           payload["text": msg
            try:
                response = requests.post(url, data=payload)
                response.raise_for_status()
@@ -59,7 +59,7 @@ from flask import Flask, request
    def get_news_analysis(pair):
        query = pair.replace('/', '')
        url = f"{NEWS_API_URL}?apikey={NEWS_API_KEY}&q={query}&language=en"
-       print(f"Calling Newsdata API: {url}")
+       print(f"Calling Newsdata API:DIN {url}")
 
        try:
            response = requests.get(url)
