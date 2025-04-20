@@ -20,6 +20,12 @@ daily_signals = []
 last_summary_sent = None
 
 # --- Telegram Sender ---
+def escape_markdown_v2(text):
+    reserved_chars = r'_[](){}~>#+-=|.!'
+    for char in reserved_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 def send_telegram_message(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     print(f"Sending Telegram message (length: {len(msg)}):\n{msg}")
@@ -28,17 +34,17 @@ def send_telegram_message(msg):
     escaped_msg = msg
     for char in special_chars:
         escaped_msg = escaped_msg.replace(char, f'\\{char}')
-    
+
     if len(escaped_msg) > 4096:
         escaped_msg = escaped_msg[:4000] + "\n*Message truncated due to length.*"
         print("⚠️ Message truncated to fit Telegram limit.")
-    
+
     payload = {
         "chat_id": CHAT_ID,
         "text": escaped_msg,
         "parse_mode": "MarkdownV2"
     }
-    
+
     try:
         response = requests.post(url, data=payload)
         response.raise_for_status()
@@ -60,37 +66,34 @@ def get_news_analysis(pair):
     query = pair.replace('/', '')
     url = f"{NEWS_API_URL}?apikey={NEWS_API_KEY}&q={query}&language=en"
     print(f"Calling Newsdata API: {url}")
-    
+
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        
+
         headlines = []
         score = 0
         now = datetime.datetime.now().timestamp()
-        
+
         for article in data.get("results", [])[:3]:
             title = article.get("title", "")
-            # Sanitize title for MarkdownV2
-            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-            for char in special_chars:
-                title = title.replace(char, f'\\{char}')
+            title = escape_markdown_v2(title)  # Use new escape function
             published = article.get("pubDate", "")
             try:
                 timestamp = datetime.datetime.strptime(published, "%Y-%m-%d %H:%M:%S").timestamp()
             except:
                 timestamp = now
             age_hours = (now - timestamp) / 3600
-            
+
             weight = max(1 - age_hours / 24, 0.1)
             if any(word in title.lower() for word in ["rise", "bull", "strong", "up"]):
                 score += 10 * weight
             elif any(word in title.lower() for word in ["fall", "bear", "weak", "down"]):
                 score -= 10 * weight
-            
+
             headlines.append(f"📰 {title}")
-        
+
         sentiment = "Positive" if score > 5 else "Negative" if score < -5 else "Neutral"
         confidence = min(max(int(abs(score) * 10), 50), 90)
         return sentiment, headlines, confidence
@@ -111,11 +114,11 @@ def get_technical_analysis(pair):
             ticker = pair.replace('/', '') + '=X'
         print(f"Fetching yfinance data for {ticker}")
         data = yf.download(ticker, period="14d", interval="1d", progress=False)
-        
+
         if data.empty or len(data) < 14:
             print(f"No sufficient data for {ticker}")
             return "Neutral", ["No price data available for this pair."], 50
-        
+
         # Calculate RSI
         delta = data['Close'].diff()
         print(f"Delta shape: {delta.shape}, Delta last: {delta.iloc[-1]}")
@@ -123,22 +126,22 @@ def get_technical_analysis(pair):
         loss = -delta.where(delta < 0, 0).rolling(window=14, min_periods=1).mean()
         print(f"Gain shape: {gain.shape}, Gain last: {gain.iloc[-1]}")
         print(f"Loss shape: {loss.shape}, Loss last: {loss.iloc[-1]}")
-        
+
         if isinstance(gain, pd.DataFrame):
             gain = gain[ticker] if ticker in gain.columns else gain.iloc[:, 0]
         if isinstance(loss, pd.DataFrame):
             loss = loss[ticker] if ticker in loss.columns else loss.iloc[:, 0]
-        
+
         if gain.isna().all() or loss.isna().all():
             print(f"Invalid gain or loss data for {ticker}")
             return "Neutral", ["Invalid price data for RSI calculation."], 50
-        
+
         rs = gain.div(loss.where(loss != 0, 1e-10))
         print(f"RS shape: {rs.shape}, RS last: {rs.iloc[-1]}")
         rs = rs.fillna(0).replace([np.inf, -np.inf], 0)
         rsi = 100 - (100 / (1 + rs))
         print(f"RSI shape: {rsi.shape}, RSI last: {rsi.iloc[-1]}")
-        
+
         if rsi.isna().all():
             print(f"RSI calculation failed for {ticker}")
             return "Neutral", ["RSI calculation failed."], 50
@@ -172,7 +175,7 @@ def get_technical_analysis(pair):
             volume_mean = volume_mean[ticker] if ticker in volume_mean else volume_mean.iloc[0]
         volume_trend = "High" if volume_last > volume_mean else "Low"
         print(f"Volume Trend: {volume_trend}")
-        
+
         tech_score = 0
         if latest_rsi > 70:
             tech_score -= 10
@@ -184,16 +187,16 @@ def get_technical_analysis(pair):
             tech_score -= 10
         if volume_trend == "High":
             tech_score += 5
-        
+
         tech_sentiment = "Positive" if tech_score > 5 else "Negative" if tech_score < -5 else "Neutral"
         confidence = min(max(int(abs(tech_score) * 10), 50), 90)
-        
+
         indicators = [
             f"📏 *RSI*: {round(latest_rsi, 2)} ({'High' if latest_rsi > 70 else 'Low' if latest_rsi < 30 else 'Neutral'})",
             f"📈 *MACD*: {'Uptrend' if latest_macd > 0 else 'Downtrend'}",
             f"📊 *Volume*: {volume_trend}"
         ]
-        
+
         return tech_sentiment, indicators, confidence
     except Exception as e:
         print(f"❌ Error fetching technical data for {pair}: {e}")
@@ -228,7 +231,7 @@ def get_simple_explanation(signal, pair, news_sentiment, tech_sentiment, market_
                 base, quote = pair[:3], pair[3:] if len(pair) >= 6 else (pair, "USD")
             asset = base
         print(f"Asset: {asset}{' (Stock)' if is_stock else ''}")
-        
+
         if signal == "BUY":
             if market_sentiment == "Positive":
                 return f"😊 Things are looking good for {asset}! News and charts suggest a potential rise."
@@ -254,15 +257,15 @@ def format_message(pair, signal, entry, timestamp):
         if not isinstance(timestamp, str) or not timestamp.endswith('Z'):
             print(f"Invalid timestamp format: {timestamp}")
             raise ValueError("Timestamp must be a string in ISO 8601 format (ending with Z)")
-        
+
         print("Parsing timestamp")
         dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
         readable_time = dt.strftime('%d %b %H:%M UTC')
         print(f"Parsed timestamp: {readable_time}")
-        
+
         print("Fetching news analysis")
         news_sentiment, headlines, news_confidence = get_news_analysis(pair)
-        
+
         print("Fetching technical analysis")
         try:
             tech_result = get_technical_analysis(pair)
@@ -279,16 +282,16 @@ def format_message(pair, signal, entry, timestamp):
             tech_sentiment = "Neutral"
             indicators = ["Technical analysis unavailable."]
             tech_confidence = 50
-        
+
         print("Calculating market sentiment")
         market_sentiment = get_market_sentiment(news_sentiment, tech_sentiment)
         print("Generating explanation")
         explanation = get_simple_explanation(signal, pair, news_sentiment, tech_sentiment, market_sentiment)
         print(f"Explanation: {explanation}")
-        
+
         confidence = round((news_confidence + tech_confidence) / 2)
         print(f"Computed confidence: {confidence}")
-        
+
         print("Constructing message")
         message = f"""
 🌟 *New Signal Alert!*
@@ -360,11 +363,11 @@ def webhook():
         if not signal or not pair or not entry or not alert_time:
             print("⚠️ Missing required fields in payload.")
             return "Incomplete data", 400
-        
+
         if '/' not in pair and len(pair) >= 6:
             pair = f"{pair[:3]}/{pair[3:]}"
         print(f"Normalized pair: {pair}")
-        
+
         signal = signal.upper()
         if signal not in ['BUY', 'SELL']:
             print(f"⚠️ Invalid signal: {signal}")
@@ -385,10 +388,10 @@ def send_daily_summary():
     utc_now = datetime.datetime.utcnow()
     if utc_now.hour != 21 or (last_summary_sent and last_summary_sent.date() == utc_now.date()):
         return
-        
+
     if not daily_signals:
         return
-        
+
     today = utc_now.strftime('%d %b')
     lines = [f"📅 *Today's Signals – {today}*"]
     for s in daily_signals:
