@@ -21,7 +21,7 @@ last_summary_sent = None
 
 # --- Telegram Sender ---
 def escape_markdown_v2(text):
-    reserved_chars = r'_[](){}~>#+-=|.!'
+    reserved_chars = r'_*[](){}~>#+-=|.!'
     for char in reserved_chars:
         text = text.replace(char, f'\\{char}')
     return text
@@ -29,16 +29,14 @@ def escape_markdown_v2(text):
 def send_telegram_message(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     print(f"Sending Telegram message (length: {len(msg)}):\n{msg}")
-    # Escape the entire message for MarkdownV2
-    escaped_msg = escape_markdown_v2(msg)
-
-    if len(escaped_msg) > 4096:
-        escaped_msg = escaped_msg[:4000] + "\n*Message truncated due to length.*"
+    # Use the message as-is, since dynamic inputs are escaped in format_message
+    if len(msg) > 4096:
+        msg = msg[:4000] + "\n*Message truncated due to length.*"
         print("⚠️ Message truncated to fit Telegram limit.")
 
     payload = {
         "chat_id": CHAT_ID,
-        "text": escaped_msg,
+        "text": msg,
         "parse_mode": "MarkdownV2"
     }
 
@@ -75,7 +73,7 @@ def get_news_analysis(pair):
 
         for article in data.get("results", [])[:3]:
             title = article.get("title", "")
-            title = escape_markdown_v2(title)  # Use escape function
+            title = escape_markdown_v2(title)  # Escape news titles
             published = article.get("pubDate", "")
             try:
                 timestamp = datetime.datetime.strptime(published, "%Y-%m-%d %H:%M:%S").timestamp()
@@ -290,26 +288,36 @@ def format_message(pair, signal, entry, timestamp):
         print(f"Computed confidence: {confidence}")
 
         print("Constructing message")
+        # Escape all dynamic inputs
+        escaped_pair = escape_markdown_v2(str(pair))
+        escaped_entry = escape_markdown_v2(str(entry))
+        escaped_readable_time = escape_markdown_v2(readable_time)
+        escaped_explanation = escape_markdown_v2(explanation)
+        escaped_market_sentiment = escape_markdown_v2(market_sentiment)
+        escaped_confidence = escape_markdown_v2(str(confidence))
+        # Escape indicators to handle parentheses and other characters
+        escaped_indicators = [escape_markdown_v2(ind) for ind in indicators]
+
         message = f"""
 🌟 *New Signal Alert!*
 
-💱 *{'Stock' if '/' not in pair and len(pair) < 6 else 'Pair'}: {pair}*
+💱 *{'Stock' if '/' not in pair and len(pair) < 6 else 'Pair'}: {escaped_pair}*
 📢 *Action*: {'📈 Buy' if signal == 'BUY' else '📉 Sell'}*
-💵 *Price*: {entry}*
-🕒 *Time*: {readable_time}*
+💵 *Price*: {escaped_entry}*
+🕒 *Time*: {escaped_readable_time}*
 
 📰 *Latest News:*
 {chr(10).join(headlines)}*
 
 📊 *Chart Insights:*
-{chr(10).join(indicators)}*
+{chr(10).join(escaped_indicators)}*
 
-🌍 *Market Mood*: {market_sentiment}*
+🌍 *Market Mood*: {escaped_market_sentiment}*
 
 💡 *Why This Signal?*
-{explanation}*
+{escaped_explanation}*
 
-🔒 *Confidence*: {confidence}/100*
+🔒 *Confidence*: {escaped_confidence}/100*
 
 ✅ *Tip*: Always double-check and protect your investment!*
 """
@@ -321,13 +329,16 @@ def format_message(pair, signal, entry, timestamp):
             readable_time = datetime.datetime.utcnow().strftime('%d %b %H:%M UTC')
         except:
             readable_time = "Unknown time"
+        escaped_pair = escape_markdown_v2(str(pair))
+        escaped_entry = escape_markdown_v2(str(entry))
+        escaped_readable_time = escape_markdown_v2(readable_time)
         message = f"""
 🌟 *Signal Alert Error!*
 
-💱 *{'Stock' if '/' not in pair and len(pair) < 6 else 'Pair'}: {pair}*
+💱 *{'Stock' if '/' not in pair and len(pair) < 6 else 'Pair'}: {escaped_pair}*
 📢 *Action*: {'📈 Buy' if signal == 'BUY' else '📉 Sell'}*
-💵 *Price*: {entry}*
-🕒 *Time*: {readable_time}*
+💵 *Price*: {escaped_entry}*
+🕒 *Time*: {escaped_readable_time}*
 
 📰 *Latest News:*
 No news available.*
@@ -413,3 +424,4 @@ if __name__ == '__main__':
     import os
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port)
+
