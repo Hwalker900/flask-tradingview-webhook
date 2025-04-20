@@ -29,11 +29,8 @@ def escape_markdown_v2(text):
 def send_telegram_message(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     print(f"Sending Telegram message (length: {len(msg)}):\n{msg}")
-    # Escape special characters for MarkdownV2
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    escaped_msg = msg
-    for char in special_chars:
-        escaped_msg = escaped_msg.replace(char, f'\\{char}')
+    # Escape the entire message for MarkdownV2
+    escaped_msg = escape_markdown_v2(msg)
 
     if len(escaped_msg) > 4096:
         escaped_msg = escaped_msg[:4000] + "\n*Message truncated due to length.*"
@@ -78,7 +75,7 @@ def get_news_analysis(pair):
 
         for article in data.get("results", [])[:3]:
             title = article.get("title", "")
-            title = escape_markdown_v2(title)  # Use new escape function
+            title = escape_markdown_v2(title)  # Use escape function
             published = article.get("pubDate", "")
             try:
                 timestamp = datetime.datetime.strptime(published, "%Y-%m-%d %H:%M:%S").timestamp()
