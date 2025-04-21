@@ -109,22 +109,22 @@ def get_technical_analysis(pair):
                 print(f"Attempt {attempt + 1}: Error fetching {ticker}: {e}")
                 time.sleep(1)
         else:
-            # Fallback for forex pairs using ccxt with OANDA
+            # Fallback for forex pairs using ccxt with Kraken
             if pair in {'CADJPY', 'USDHUF', 'USDJPY'}:
-                print(f"Falling back to ccxt OANDA for {pair}")
+                print(f"Falling back to ccxt Kraken for {pair}")
                 try:
-                    exchange = ccxt.oanda()
+                    exchange = ccxt.kraken()
                     symbol = f"{pair[:3]}/{pair[3:]}"
                     ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1d', limit=14)
                     if len(ohlcv) < 14:
-                        print(f"Insufficient data from ccxt OANDA for {pair}")
+                        print(f"Insufficient data from ccxt Kraken for {pair}")
                         return "Neutral", ["📏 Technical analysis unavailable."], 50
                     data = pd.DataFrame(ohlcv, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
                     data['Timestamp'] = pd.to_datetime(data['Timestamp'], unit='ms')
                     data.set_index('Timestamp', inplace=True)
                     data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
                 except Exception as e:
-                    print(f"CCXT OANDA fallback failed for {pair}: {e}")
+                    print(f"CCXT Kraken fallback failed for {pair}: {e}")
                     return "Neutral", ["📏 Technical analysis unavailable."], 50
             else:
                 print(f"No sufficient data for {ticker} after 3 attempts")
