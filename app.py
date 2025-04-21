@@ -6,7 +6,6 @@ import threading
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import ccxt
 
 app = Flask(__name__)
 
@@ -15,6 +14,7 @@ BOT_TOKEN = "7776677134:AAGJo3VfwiB5gDpCE5e5jvtHonhTcjv-NWc"
 CHAT_ID = "@Supercellsignals"
 NEWS_API_KEY = "pub_80721acdf58f8a7b7a1d99e149c28a6ebfcc5"
 NEWS_API_URL = "https://newsdata.io/api/1/news"
+ALPHA_VANTAGE_API_KEY = "I5F2Y0S64UWC2SEW"  # Replace with your key
 
 # --- Valid Pairs ---
 VALID_PAIRS = {'BABA', 'TSLA', 'BTCUSD', 'CADJPY', 'USDHUF', 'USDJPY'}
@@ -76,7 +76,7 @@ def get_news_analysis(pair):
             headlines.append(f"📰 {title}")
         
         if not headlines:
-            headlines = ["📰 No recent news found."]
+            headlines = ["�新聞 No recent news found."]
         
         sentiment = "Positive" if score > 5 else "Negative" if score < -5 else "Neutral"
         confidence = min(max(int(abs(score) * 10), 50), 90)
@@ -109,22 +109,39 @@ def get_technical_analysis(pair):
                 print(f"Attempt {attempt + 1}: Error fetching {ticker}: {e}")
                 time.sleep(1)
         else:
-            # Fallback for forex pairs using ccxt with Kraken
+            # Fallback for forex pairs using Alpha Vantage
             if pair in {'CADJPY', 'USDHUF', 'USDJPY'}:
-                print(f"Falling back to ccxt Kraken for {pair}")
+                print(f"Falling back to Alpha Vantage for {pair}")
                 try:
-                    exchange = ccxt.kraken()
-                    symbol = f"{pair[:3]}/{pair[3:]}"
-                    ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1d', limit=14)
-                    if len(ohlcv) < 14:
-                        print(f"Insufficient data from ccxt Kraken for {pair}")
+                    symbol = f"{pair[:3]}{pair[3:]}"
+                    url = f"https://www.alphavantage.co/query?function=FX_DAILY&from_symbol={pair[:3]}&to_symbol={pair[3:]}&apikey={ALPHA_VANTAGE_API_KEY}&outputsize=compact"
+                    response = requests.get(url)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    if "Time Series FX (Daily)" not in data:
+                        print(f"Invalid response from Alpha Vantage for {pair}")
                         return "Neutral", ["📏 Technical analysis unavailable."], 50
-                    data = pd.DataFrame(ohlcv, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
-                    data['Timestamp'] = pd.to_datetime(data['Timestamp'], unit='ms')
-                    data.set_index('Timestamp', inplace=True)
-                    data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
+                    
+                    time_series = data["Time Series FX (Daily)"]
+                    df = pd.DataFrame.from_dict(time_series, orient='index')
+                    df = df.rename(columns={
+                        '1. open': 'Open',
+                        '2. high': 'High',
+                        '3. low': 'Low',
+                        '4. close': 'Close',
+                        '5. volume': 'Volume'
+                    })
+                    df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+                    df.index = pd.to_datetime(df.index)
+                    df = df.sort_index().tail(14)
+                    
+                    if len(df) < 14:
+                        print(f"Insufficient data from Alpha Vantage for {pair}")
+                        return "Neutral", ["📏 Technical analysis unavailable."], 50
+                    data = df
                 except Exception as e:
-                    print(f"CCXT Kraken fallback failed for {pair}: {e}")
+                    print(f"Alpha Vantage fallback failed for {pair}: {e}")
                     return "Neutral", ["📏 Technical analysis unavailable."], 50
             else:
                 print(f"No sufficient data for {ticker} after 3 attempts")
