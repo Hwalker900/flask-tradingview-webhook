@@ -14,7 +14,7 @@ BOT_TOKEN = "7776677134:AAGJo3VfwiB5gDpCE5e5jvtHonhTcjv-NWc"
 CHAT_ID = "@Supercellsignals"
 NEWS_API_KEY = "pub_80721acdf58f8a7b7a1d99e149c28a6ebfcc5"
 NEWS_API_URL = "https://newsdata.io/api/1/news"
-ALPHA_VANTAGE_API_KEY = "I5F2Y0S64UWC2SEW"  # Replace with your key
+ALPHA_VANTAGE_API_KEY = "YOUR_ALPHA_VANTAGE_API_KEY"  # Replace with your key
 
 # --- Valid Pairs ---
 VALID_PAIRS = {'BABA', 'TSLA', 'BTCUSD', 'CADJPY', 'USDHUF', 'USDJPY'}
@@ -76,7 +76,7 @@ def get_news_analysis(pair):
             headlines.append(f"📰 {title}")
         
         if not headlines:
-            headlines = ["�新聞 No recent news found."]
+            headlines = ["📰 No recent news found."]
         
         sentiment = "Positive" if score > 5 else "Negative" if score < -5 else "Neutral"
         confidence = min(max(int(abs(score) * 10), 50), 90)
@@ -129,10 +129,10 @@ def get_technical_analysis(pair):
                         '1. open': 'Open',
                         '2. high': 'High',
                         '3. low': 'Low',
-                        '4. close': 'Close',
-                        '5. volume': 'Volume'
+                        '4. close': 'Close'
                     })
-                    df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+                    df = df[['Open', 'High', 'Low', 'Close']].astype(float)
+                    df['Volume'] = 0  # Synthetic volume for forex
                     df.index = pd.to_datetime(df.index)
                     df = df.sort_index().tail(14)
                     
@@ -183,15 +183,16 @@ def get_technical_analysis(pair):
         # Calculate Volume Trend
         volume = data['Volume']
         print(f"Volume shape: {volume.shape}, Volume last: {volume.iloc[-1]}")
-        if volume.isna().all():
-            print(f"Invalid volume data for {ticker}")
-            return "Neutral", ["📏 Technical analysis unavailable."], 50
-        volume_mean = volume.mean()
-        volume_last = volume.iloc[-1]
-        volume_trend = "High" if volume_last > volume_mean else "Low"
+        if volume.isna().all() or volume.eq(0).all():
+            volume_trend = "N/A (Forex)"
+            tech_score = 0
+        else:
+            volume_mean = volume.mean()
+            volume_last = volume.iloc[-1]
+            volume_trend = "High" if volume_last > volume_mean else "Low"
+            tech_score = 5 if volume_trend == "High" else 0
         print(f"Volume Trend: {volume_trend}")
         
-        tech_score = 0
         if latest_rsi > 70:
             tech_score -= 10
         elif latest_rsi < 30:
@@ -200,8 +201,6 @@ def get_technical_analysis(pair):
             tech_score += 10
         elif latest_macd < 0:
             tech_score -= 10
-        if volume_trend == "High":
-            tech_score += 5
         
         tech_sentiment = "Positive" if tech_score > 5 else "Negative" if tech_score < -5 else "Neutral"
         confidence = min(max(int(abs(tech_score) * 10), 50), 90)
